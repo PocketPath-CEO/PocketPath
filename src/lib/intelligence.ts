@@ -560,8 +560,8 @@ export function simulateWhatIf(
     labelKey = 'whatif.spendLabel';
     labelParams = { amt: amount };
   } else if (type === 'saveMore') {
-    afterBalance = currentBalance;
-    afterProjected = projectedBalance;
+    afterBalance = currentBalance - amount;
+    afterProjected = projectedBalance - amount;
     labelKey = 'whatif.saveLabel';
     labelParams = { amt: amount };
   } else {
