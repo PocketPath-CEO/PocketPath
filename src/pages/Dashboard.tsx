@@ -285,6 +285,15 @@ export function Dashboard({ setPage }: { setPage: (p: PageId) => void }) {
             <EmptyHint text={t('txn.emptyBody')} />
           ) : (
             <div className="space-y-3">
+              <p className="sr-only">
+                {t('dash.spendingSummary', {
+                  total: formatRands(total),
+                  count: Math.min(items.length, 6),
+                  top: t(CATEGORIES[items[0].category as keyof typeof CATEGORIES]?.tKey ?? 'cat.other'),
+                  topAmt: formatRands(items[0].amount),
+                  topPct: items[0].percentage.toFixed(0),
+                })}
+              </p>
               {items.slice(0, 6).map((it) => {
                 const cat = CATEGORIES[it.category as keyof typeof CATEGORIES];
                 const Icon = cat?.icon;

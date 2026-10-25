@@ -23,6 +23,7 @@ interface AppContextValue {
   lastSyncError: string | null;
   importFromLocal: () => void;
   loadFromCloud: () => Promise<void>;
+  retrySync: () => void;
   addTransaction: (t: Omit<Transaction, 'id'>) => void;
   updateTransaction: (id: string, patch: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
@@ -80,6 +81,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasLoadedCloud = useRef(false);
+  const saveInFlight = useRef(false);
 
   // Load cloud data when user signs in
   useEffect(() => {
@@ -115,6 +117,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
     saveTimer.current = setTimeout(() => {
+      if (saveInFlight.current) return;
+      saveInFlight.current = true;
       setSyncStatus('saving');
       saveCloudData(user.id, data)
         .then(() => {
@@ -124,6 +128,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .catch((err: unknown) => {
           setSyncStatus('error');
           setLastSyncError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => {
+          saveInFlight.current = false;
         });
     }, 1500);
 
@@ -169,6 +176,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const retrySync = () => {
+    if (!user || !supabase) return;
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSyncStatus('saving');
+    saveCloudData(user.id, data)
+      .then(() => {
+        setSyncStatus('saved');
+        setLastSyncError(null);
+      })
+      .catch((err: unknown) => {
+        setSyncStatus('error');
+        setLastSyncError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        saveInFlight.current = false;
+      });
+  };
+
   const value = useMemo<AppContextValue>(
     () => ({
       data,
@@ -177,6 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastSyncError,
       importFromLocal,
       loadFromCloud,
+      retrySync,
       addTransaction: (t) =>
         setData((d) => ({ ...d, transactions: [{ ...t, id: uid() }, ...d.transactions] })),
       updateTransaction: (id, patch) =>

@@ -30,7 +30,7 @@ import { Modal } from '../components/Modal';
 import type { AppData } from '../types';
 
 export function Settings({ onGuideStart }: { onGuideStart: () => void }) {
-  const { data, resetToDemo, clearAll, syncStatus, lastSyncError, importFromLocal, loadFromCloud } = useApp();
+  const { data, resetToDemo, clearAll, syncStatus, lastSyncError, importFromLocal, loadFromCloud, retrySync } = useApp();
   const { user, signOut, configured } = useAuth();
   const { t, lang, setLang, simpleMode, setSimpleMode, languages } = useI18n();
   const [resetOpen, setResetOpen] = useState(false);
@@ -131,9 +131,21 @@ export function Settings({ onGuideStart }: { onGuideStart: () => void }) {
             )}
           </div>
           {lastSyncError && (
-            <p className="text-xs text-red-500 mb-3">{lastSyncError}</p>
+            <p className="text-xs text-red-500 mb-2">{lastSyncError}</p>
+          )}
+          {syncStatus === 'error' && (
+            <p className="text-xs text-navy-500 mb-3">{t('sync.errorExplain')}</p>
           )}
           <div className="space-y-2">
+            {syncStatus === 'error' && (
+              <Button
+                variant="secondary"
+                onClick={() => retrySync()}
+                className="w-full justify-start"
+              >
+                <RefreshCw size={16} /> {t('sync.retry')}
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => loadFromCloud()}

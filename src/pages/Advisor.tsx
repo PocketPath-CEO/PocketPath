@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Sparkles, Send, ShieldCheck, Search, AlertTriangle, CheckCircle2, Lock, FlaskConical } from 'lucide-react';
+import { Sparkles, Send, ShieldCheck, Search, AlertTriangle, CheckCircle2, Lock, FlaskConical, CreditCard } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { useI18n } from '../i18n/I18nContext';
 import { Card, Button, Badge, cn } from '../components/ui';
-import { localAdvisor, checkAffordability, simulateWhatIf } from '../lib/intelligence';
+import { localAdvisor, checkAffordability, simulateWhatIf, estimateRepayment, type RepaymentResult } from '../lib/intelligence';
 import { formatRands } from '../lib/format';
 import { EXPENSE_CATEGORY_IDS, CATEGORIES } from '../categories';
 
@@ -20,6 +20,7 @@ export function Advisor() {
   const [input, setInput] = useState('');
   const [showAfford, setShowAfford] = useState(false);
   const [showWhatIf, setShowWhatIf] = useState(false);
+  const [showCredit, setShowCredit] = useState(false);
 
   function ask(question: string) {
     if (!question.trim()) return;
@@ -167,6 +168,21 @@ export function Advisor() {
         {showAfford && <AffordabilityChecker />}
       </Card>
 
+      {/* Repayment estimator */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <CreditCard size={18} className="text-mint-600" />
+            <h2 className="font-bold text-navy-800">{t('credit.title')}</h2>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setShowCredit((v) => !v)}>
+            {showCredit ? '−' : '+'}
+          </Button>
+        </div>
+        <p className="text-sm text-navy-500 mb-3">{t('credit.subtitle')}</p>
+        {showCredit && <RepaymentEstimator />}
+      </Card>
+
       {/* Stay Safe */}
       <Card>
         <div className="flex items-center gap-2 mb-4">
@@ -233,122 +249,120 @@ function WhatIfTool() {
   return (
     <div className="space-y-3">
       {/* Scenario selector */}
-      <div className="flex gap-1 bg-navy-50 rounded-xl p-1" role="tablist">
-        <button
-          onClick={() => setScenario('spend')}
-          className={cn(
-            'flex-1 py-2 rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-mint-300',
-            scenario === 'spend' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500'
-          )}
-          role="tab"
-          aria-selected={scenario === 'spend'}
-        >
-          {t('whatif.spend')}
-        </button>
-        <button
-          onClick={() => setScenario('saveMore')}
-          className={cn(
-            'flex-1 py-2 rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-mint-300',
-            scenario === 'saveMore' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500'
-          )}
-          role="tab"
-          aria-selected={scenario === 'saveMore'}
-        >
-          {t('whatif.saveMore')}
-        </button>
-        <button
-          onClick={() => setScenario('reduceCategory')}
-          className={cn(
-            'flex-1 py-2 rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-mint-300',
-            scenario === 'reduceCategory' ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500'
-          )}
-          role="tab"
-          aria-selected={scenario === 'reduceCategory'}
-        >
-          {t('whatif.reduceCat')}
-        </button>
+      <div className="flex gap-1 bg-navy-50 rounded-xl p-1" role="tablist" aria-label={t('whatif.title')}>
+        {([
+          { id: 'spend' as const, label: t('whatif.spend') },
+          { id: 'saveMore' as const, label: t('whatif.saveMore') },
+          { id: 'reduceCategory' as const, label: t('whatif.reduceCat') },
+        ]).map((tab, i, arr) => (
+          <button
+            key={tab.id}
+            onClick={() => setScenario(tab.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                setScenario(arr[(i + 1) % arr.length].id);
+              } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                setScenario(arr[(i - 1 + arr.length) % arr.length].id);
+              }
+            }}
+            tabIndex={scenario === tab.id ? 0 : -1}
+            className={cn(
+              'flex-1 py-2 rounded-lg text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-mint-300',
+              scenario === tab.id ? 'bg-white text-navy-800 shadow-sm' : 'text-navy-500'
+            )}
+            role="tab"
+            aria-selected={scenario === tab.id}
+            aria-controls="whatif-panel"
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div>
-        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
-          {t('whatif.amount')}
-        </label>
-        <input
-          type="number"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
-          className={inputCls}
-        />
-      </div>
-
-      {scenario === 'reduceCategory' && (
+      <div id="whatif-panel" role="tabpanel" className="space-y-3">
         <div>
           <label className="block text-sm font-semibold text-navy-700 mb-1.5">
-            {t('whatif.category')}
+            {t('whatif.amount')}
           </label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
+          <input
+            type="number"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
             className={inputCls}
-          >
-            {EXPENSE_CATEGORY_IDS.map((id) => (
-              <option key={id} value={id}>
-                {t(CATEGORIES[id].tKey)}
-              </option>
-            ))}
-          </select>
+          />
         </div>
-      )}
 
-      {error && (
-        <div className="rounded-lg bg-red-50 text-red-600 text-sm px-3 py-2" role="alert">
-          {error}
-        </div>
-      )}
-
-      <Button onClick={run} className="w-full">
-        {t('whatif.run')}
-      </Button>
-
-      {result && (
-        <div className="space-y-3 animate-scale-in">
-          {/* Current vs After comparison */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-navy-50 p-3">
-              <div className="text-xs text-navy-400 font-semibold">{t('whatif.current')}</div>
-              <div className="text-lg font-extrabold text-navy-900 mt-0.5">
-                {formatRands(result.projectedBalance)}
-              </div>
-              <div className="text-xs text-navy-400">{t('whatif.projectedByPayday')}</div>
-            </div>
-            <div
-              className={cn(
-                'rounded-xl p-3',
-                result.riskLevel === 'safe' ? 'bg-mint-50' : result.riskLevel === 'caution' ? 'bg-amber-50' : 'bg-red-50'
-              )}
+        {scenario === 'reduceCategory' && (
+          <div>
+            <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+              {t('whatif.category')}
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={inputCls}
             >
-              <div className="text-xs font-semibold text-navy-400">{t('whatif.after')}</div>
+              {EXPENSE_CATEGORY_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {t(CATEGORIES[id].tKey)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-lg bg-red-50 text-red-600 text-sm px-3 py-2" role="alert">
+            {error}
+          </div>
+        )}
+
+        <Button onClick={run} className="w-full">
+          {t('whatif.run')}
+        </Button>
+
+        {result && (
+          <div className="space-y-3 animate-scale-in">
+            {/* Current vs After comparison */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-navy-50 p-3">
+                <div className="text-xs text-navy-400 font-semibold">{t('whatif.current')}</div>
+                <div className="text-lg font-extrabold text-navy-900 mt-0.5">
+                  {formatRands(result.projectedBalance)}
+                </div>
+                <div className="text-xs text-navy-400">{t('whatif.projectedByPayday')}</div>
+              </div>
               <div
                 className={cn(
-                  'text-lg font-extrabold mt-0.5',
-                  result.afterProjected < 0 ? 'text-red-600' : 'text-navy-900'
+                  'rounded-xl p-3',
+                  result.riskLevel === 'safe' ? 'bg-mint-50' : result.riskLevel === 'caution' ? 'bg-amber-50' : 'bg-red-50'
                 )}
               >
-                {formatRands(result.afterProjected)}
+                <div className="text-xs font-semibold text-navy-400">{t('whatif.after')}</div>
+                <div
+                  className={cn(
+                    'text-lg font-extrabold mt-0.5',
+                    result.afterProjected < 0 ? 'text-red-600' : 'text-navy-900'
+                  )}
+                >
+                  {formatRands(result.afterProjected)}
+                </div>
+                <div className="text-xs text-navy-400">{t('whatif.projectedByPayday')}</div>
               </div>
-              <div className="text-xs text-navy-400">{t('whatif.projectedByPayday')}</div>
+            </div>
+
+            {/* Risk verdict */}
+            <div className={cn('rounded-xl border px-4 py-3 flex items-center gap-2', riskConfig[result.riskLevel].cls)}>
+              {riskConfig[result.riskLevel].icon}
+              <span className="font-bold text-sm">{t(result.riskKey)}</span>
             </div>
           </div>
-
-          {/* Risk verdict */}
-          <div className={cn('rounded-xl border px-4 py-3 flex items-center gap-2', riskConfig[result.riskLevel].cls)}>
-            {riskConfig[result.riskLevel].icon}
-            <span className="font-bold text-sm">{t(result.riskKey)}</span>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -450,6 +464,142 @@ function AffordabilityChecker() {
             </Badge>
           </div>
           <p className="text-sm mt-1">{t(result.explanation, result.params)}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RepaymentEstimator() {
+  const { t } = useI18n();
+  const [balance, setBalance] = useState('');
+  const [rate, setRate] = useState('');
+  const [payment, setPayment] = useState('');
+  const [fees, setFees] = useState('');
+  const [result, setResult] = useState<RepaymentResult | null>(null);
+  const [error, setError] = useState('');
+
+  function calc() {
+    const bal = parseFloat(balance);
+    const r = parseFloat(rate);
+    const pay = parseFloat(payment);
+    const f = parseFloat(fees) || 0;
+
+    if (!bal || bal <= 0) {
+      setError(t('credit.errAmount'));
+      return;
+    }
+    if (isNaN(r) || r < 0) {
+      setError(t('credit.errRate'));
+      return;
+    }
+    if (!pay || pay <= 0) {
+      setError(t('credit.errPayment'));
+      return;
+    }
+    setError('');
+    setResult(estimateRepayment(bal, r, pay + f));
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+          {t('credit.balance')}
+        </label>
+        <input
+          type="number"
+          inputMode="decimal"
+          value={balance}
+          onChange={(e) => setBalance(e.target.value)}
+          placeholder="0.00"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+          {t('credit.interestRate')}
+        </label>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          value={rate}
+          onChange={(e) => setRate(e.target.value)}
+          placeholder="0.0"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+          {t('credit.monthlyPayment')}
+        </label>
+        <input
+          type="number"
+          inputMode="decimal"
+          value={payment}
+          onChange={(e) => setPayment(e.target.value)}
+          placeholder="0.00"
+          className={inputCls}
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+          {t('credit.optionalFees')}
+        </label>
+        <input
+          type="number"
+          inputMode="decimal"
+          value={fees}
+          onChange={(e) => setFees(e.target.value)}
+          placeholder="0.00"
+          className={inputCls}
+        />
+      </div>
+      {error && (
+        <div className="rounded-lg bg-red-50 text-red-600 text-sm px-3 py-2" role="alert">
+          {error}
+        </div>
+      )}
+      <Button onClick={calc} className="w-full">
+        {t('credit.calculate')}
+      </Button>
+      {result && (
+        <div className="space-y-3 animate-scale-in" role="status" aria-live="polite">
+          {result.verdict === 'tooSmall' ? (
+            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 flex items-start gap-2">
+              <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
+              <span className="text-sm text-red-700">
+                {t('credit.tooSmall', { amt: result.monthlyInterest.toFixed(2) })}
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3">
+                <div className="rounded-xl bg-navy-50 p-3">
+                  <div className="text-xs text-navy-400 font-semibold">{t('credit.months')}</div>
+                  <div className="text-lg font-extrabold text-navy-900 mt-0.5">
+                    {result.months}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-mint-50 p-3">
+                    <div className="text-xs text-navy-400 font-semibold">{t('credit.totalInterest')}</div>
+                    <div className="text-lg font-extrabold text-navy-900 mt-0.5">
+                      {formatRands(result.totalInterest ?? 0)}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-navy-50 p-3">
+                    <div className="text-xs text-navy-400 font-semibold">{t('credit.totalPaid')}</div>
+                    <div className="text-lg font-extrabold text-navy-900 mt-0.5">
+                      {formatRands(result.totalPaid ?? 0)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+          <p className="text-xs text-navy-400">{t('credit.assumptions')}</p>
         </div>
       )}
     </div>

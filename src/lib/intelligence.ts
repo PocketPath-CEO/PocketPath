@@ -597,6 +597,58 @@ export function simulateWhatIf(
   };
 }
 
+// ===== Responsible-credit repayment estimator =====
+// Standard amortizing loan calculation. Assumes the interest rate and monthly
+// payment remain constant for the entire repayment period, and excludes any
+// fees, rate changes, or charges the user has not entered. For education only.
+
+export interface RepaymentResult {
+  months: number | null;        // null when the payment never covers interest
+  totalInterest: number | null; // null in the same case
+  totalPaid: number | null;
+  verdict: 'ok' | 'tooSmall';
+  monthlyInterest: number;
+}
+
+export function estimateRepayment(
+  balance: number,
+  annualInterestRate: number, // percent, e.g. 24 for 24%
+  monthlyPayment: number
+): RepaymentResult {
+  const monthlyRate = annualInterestRate / 100 / 12;
+  const monthlyInterest = balance * monthlyRate;
+
+  if (monthlyPayment <= monthlyInterest) {
+    return {
+      months: null,
+      totalInterest: null,
+      totalPaid: null,
+      verdict: 'tooSmall',
+      monthlyInterest,
+    };
+  }
+
+  // Amortizing payment formula: n = -log(1 - r*B/P) / log(1 + r)
+  let months: number;
+  if (monthlyRate === 0) {
+    months = Math.ceil(balance / monthlyPayment);
+  } else {
+    const ratio = 1 - (monthlyRate * balance) / monthlyPayment;
+    months = Math.ceil(-Math.log(ratio) / Math.log(1 + monthlyRate));
+  }
+
+  const totalPaid = monthlyPayment * months;
+  const totalInterest = Math.max(0, totalPaid - balance);
+
+  return {
+    months,
+    totalInterest,
+    totalPaid,
+    verdict: 'ok',
+    monthlyInterest,
+  };
+}
+
 // ===== Advisor with improved NLU =====
 
 export interface AdvisorResponse {
