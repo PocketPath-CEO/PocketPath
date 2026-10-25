@@ -146,11 +146,11 @@ export function Advisor() {
             <FlaskConical size={18} className="text-mint-600" />
             <h2 className="font-bold text-navy-800">{t('whatif.title')}</h2>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => setShowWhatIf((v) => !v)}>
+          <Button variant="secondary" size="sm" aria-label={t('whatif.title')} aria-expanded={showWhatIf} aria-controls="whatif-tool" onClick={() => setShowWhatIf((v) => !v)}>
             {showWhatIf ? '−' : '+'}
           </Button>
         </div>
-        {showWhatIf && <WhatIfTool />}
+        {showWhatIf && <div id="whatif-tool"><WhatIfTool /></div>}
       </Card>
 
       {/* Can I afford this? */}
@@ -175,12 +175,12 @@ export function Advisor() {
             <CreditCard size={18} className="text-mint-600" />
             <h2 className="font-bold text-navy-800">{t('credit.title')}</h2>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => setShowCredit((v) => !v)}>
+          <Button variant="secondary" size="sm" aria-label={t('credit.title')} aria-expanded={showCredit} aria-controls="credit-estimator" onClick={() => setShowCredit((v) => !v)}>
             {showCredit ? '−' : '+'}
           </Button>
         </div>
         <p className="text-sm text-navy-500 mb-3">{t('credit.subtitle')}</p>
-        {showCredit && <RepaymentEstimator />}
+        {showCredit && <div id="credit-estimator"><RepaymentEstimator /></div>}
       </Card>
 
       {/* Stay Safe */}
@@ -257,14 +257,19 @@ function WhatIfTool() {
         ]).map((tab, i, arr) => (
           <button
             key={tab.id}
+            id={`whatif-tab-${tab.id}`}
             onClick={() => setScenario(tab.id)}
             onKeyDown={(e) => {
               if (e.key === 'ArrowRight') {
                 e.preventDefault();
-                setScenario(arr[(i + 1) % arr.length].id);
+                const nextIndex = (i + 1) % arr.length;
+                setScenario(arr[nextIndex].id);
+                e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
               } else if (e.key === 'ArrowLeft') {
                 e.preventDefault();
-                setScenario(arr[(i - 1 + arr.length) % arr.length].id);
+                const nextIndex = (i - 1 + arr.length) % arr.length;
+                setScenario(arr[nextIndex].id);
+                e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[nextIndex]?.focus();
               }
             }}
             tabIndex={scenario === tab.id ? 0 : -1}
@@ -281,12 +286,13 @@ function WhatIfTool() {
         ))}
       </div>
 
-      <div id="whatif-panel" role="tabpanel" className="space-y-3">
+      <div id="whatif-panel" role="tabpanel" aria-labelledby={`whatif-tab-${scenario}`} tabIndex={0} className="space-y-3">
         <div>
-          <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+          <label htmlFor="whatif-amount" className="block text-sm font-semibold text-navy-700 mb-1.5">
             {t('whatif.amount')}
           </label>
           <input
+            id="whatif-amount"
             type="number"
             inputMode="decimal"
             value={amount}
@@ -298,10 +304,11 @@ function WhatIfTool() {
 
         {scenario === 'reduceCategory' && (
           <div>
-            <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+            <label htmlFor="whatif-category" className="block text-sm font-semibold text-navy-700 mb-1.5">
               {t('whatif.category')}
             </label>
             <select
+              id="whatif-category"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               className={inputCls}
@@ -480,36 +487,48 @@ function RepaymentEstimator() {
   const [error, setError] = useState('');
 
   function calc() {
-    const bal = parseFloat(balance);
-    const r = parseFloat(rate);
-    const pay = parseFloat(payment);
-    const f = parseFloat(fees) || 0;
+    const bal = Number(balance);
+    const annualRate = Number(rate);
+    const monthlyPayment = Number(payment);
+    const monthlyFees = fees.trim() === '' ? 0 : Number(fees);
 
-    if (!bal || bal <= 0) {
+    if (!Number.isFinite(bal) || bal <= 0) {
       setError(t('credit.errAmount'));
+      setResult(null);
       return;
     }
-    if (isNaN(r) || r < 0) {
+    if (!Number.isFinite(annualRate) || annualRate < 0) {
       setError(t('credit.errRate'));
+      setResult(null);
       return;
     }
-    if (!pay || pay <= 0) {
+    if (!Number.isFinite(monthlyPayment) || monthlyPayment <= 0) {
       setError(t('credit.errPayment'));
+      setResult(null);
       return;
     }
+    if (!Number.isFinite(monthlyFees) || monthlyFees < 0) {
+      setError(t('credit.errFees'));
+      setResult(null);
+      return;
+    }
+
     setError('');
-    setResult(estimateRepayment(bal, r, pay + f));
+    setResult(estimateRepayment(bal, annualRate, monthlyPayment, monthlyFees));
   }
 
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+        <label htmlFor="credit-balance" className="block text-sm font-semibold text-navy-700 mb-1.5">
           {t('credit.balance')}
         </label>
         <input
+          id="credit-balance"
           type="number"
           inputMode="decimal"
+          min="0"
+          step="0.01"
           value={balance}
           onChange={(e) => setBalance(e.target.value)}
           placeholder="0.00"
@@ -517,13 +536,15 @@ function RepaymentEstimator() {
         />
       </div>
       <div>
-        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+        <label htmlFor="credit-rate" className="block text-sm font-semibold text-navy-700 mb-1.5">
           {t('credit.interestRate')}
         </label>
         <input
+          id="credit-rate"
           type="number"
           inputMode="decimal"
-          step="0.1"
+          min="0"
+          step="0.01"
           value={rate}
           onChange={(e) => setRate(e.target.value)}
           placeholder="0.0"
@@ -531,12 +552,15 @@ function RepaymentEstimator() {
         />
       </div>
       <div>
-        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+        <label htmlFor="credit-payment" className="block text-sm font-semibold text-navy-700 mb-1.5">
           {t('credit.monthlyPayment')}
         </label>
         <input
+          id="credit-payment"
           type="number"
           inputMode="decimal"
+          min="0"
+          step="0.01"
           value={payment}
           onChange={(e) => setPayment(e.target.value)}
           placeholder="0.00"
@@ -544,12 +568,15 @@ function RepaymentEstimator() {
         />
       </div>
       <div>
-        <label className="block text-sm font-semibold text-navy-700 mb-1.5">
+        <label htmlFor="credit-fees" className="block text-sm font-semibold text-navy-700 mb-1.5">
           {t('credit.optionalFees')}
         </label>
         <input
+          id="credit-fees"
           type="number"
           inputMode="decimal"
+          min="0"
+          step="0.01"
           value={fees}
           onChange={(e) => setFees(e.target.value)}
           placeholder="0.00"
@@ -572,6 +599,14 @@ function RepaymentEstimator() {
               <span className="text-sm text-red-700">
                 {t('credit.tooSmall', { amt: result.monthlyInterest.toFixed(2) })}
               </span>
+            </div>
+          ) : result.verdict === 'tooLong' ? (
+            <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {t('credit.tooLong')}
+            </div>
+          ) : result.verdict === 'invalid' ? (
+            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+              {t('credit.errAmount')}
             </div>
           ) : (
             <>

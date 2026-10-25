@@ -111,14 +111,16 @@ export function committedBalanceAsOf(
 // ===== Recurrence helpers =====
 
 function addMonths(iso: string, months: number): string {
-  const d = new Date(iso + 'T00:00:00');
-  d.setMonth(d.getMonth() + months);
+  const [year, month, day] = iso.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCMonth(d.getUTCMonth() + months);
   return d.toISOString().split('T')[0];
 }
 
 function addWeeks(iso: string, weeks: number): string {
-  const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + weeks * 7);
+  const [year, month, day] = iso.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCDate(d.getUTCDate() + weeks * 7);
   return d.toISOString().split('T')[0];
 }
 

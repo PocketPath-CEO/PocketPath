@@ -598,55 +598,63 @@ export function simulateWhatIf(
 }
 
 // ===== Responsible-credit repayment estimator =====
-// Standard amortizing loan calculation. Assumes the interest rate and monthly
-// payment remain constant for the entire repayment period, and excludes any
-// fees, rate changes, or charges the user has not entered. For education only.
+// Monthly amortization estimate. Assumes a fixed rate and debt payment;
+// optional monthly fees are charged separately and included in total paid.
+// For education only, not a lending decision or financial advice.
 
 export interface RepaymentResult {
-  months: number | null;        // null when the payment never covers interest
-  totalInterest: number | null; // null in the same case
+  months: number | null;
+  totalInterest: number | null;
   totalPaid: number | null;
-  verdict: 'ok' | 'tooSmall';
+  verdict: 'ok' | 'tooSmall' | 'tooLong' | 'invalid';
   monthlyInterest: number;
 }
 
 export function estimateRepayment(
   balance: number,
   annualInterestRate: number, // percent, e.g. 24 for 24%
-  monthlyPayment: number
+  monthlyPayment: number,
+  monthlyFees = 0
 ): RepaymentResult {
+  if (
+    !Number.isFinite(balance) || balance <= 0 ||
+    !Number.isFinite(annualInterestRate) || annualInterestRate < 0 ||
+    !Number.isFinite(monthlyPayment) || monthlyPayment <= 0 ||
+    !Number.isFinite(monthlyFees) || monthlyFees < 0
+  ) {
+    return { months: null, totalInterest: null, totalPaid: null, verdict: 'invalid', monthlyInterest: 0 };
+  }
+
   const monthlyRate = annualInterestRate / 100 / 12;
   const monthlyInterest = balance * monthlyRate;
-
   if (monthlyPayment <= monthlyInterest) {
-    return {
-      months: null,
-      totalInterest: null,
-      totalPaid: null,
-      verdict: 'tooSmall',
-      monthlyInterest,
-    };
+    return { months: null, totalInterest: null, totalPaid: null, verdict: 'tooSmall', monthlyInterest };
   }
 
-  // Amortizing payment formula: n = -log(1 - r*B/P) / log(1 + r)
-  let months: number;
-  if (monthlyRate === 0) {
-    months = Math.ceil(balance / monthlyPayment);
-  } else {
-    const ratio = 1 - (monthlyRate * balance) / monthlyPayment;
-    months = Math.ceil(-Math.log(ratio) / Math.log(1 + monthlyRate));
+  // Monthly fees are an extra cash cost and do not reduce the debt balance.
+  // Simulate each statement so the final payment is not overstated.
+  let remaining = balance;
+  let months = 0;
+  let totalInterest = 0;
+  let totalPaid = 0;
+  while (remaining > 0 && months < 1200) {
+    const interest = remaining * monthlyRate;
+    if (monthlyPayment <= interest) {
+      return { months: null, totalInterest: null, totalPaid: null, verdict: 'tooSmall', monthlyInterest: interest };
+    }
+    const principalPaid = Math.min(remaining, monthlyPayment - interest);
+    const debtPayment = interest + principalPaid;
+    remaining = Math.max(0, remaining - principalPaid);
+    totalInterest += interest;
+    totalPaid += debtPayment + monthlyFees;
+    months += 1;
   }
 
-  const totalPaid = monthlyPayment * months;
-  const totalInterest = Math.max(0, totalPaid - balance);
+  if (remaining > 0) {
+    return { months: null, totalInterest: null, totalPaid: null, verdict: 'tooLong', monthlyInterest };
+  }
 
-  return {
-    months,
-    totalInterest,
-    totalPaid,
-    verdict: 'ok',
-    monthlyInterest,
-  };
+  return { months, totalInterest, totalPaid, verdict: 'ok', monthlyInterest };
 }
 
 // ===== Advisor with improved NLU =====
